@@ -1,7 +1,9 @@
 from transformers import GPT2LMHeadModel, PreTrainedTokenizerFast
+from trainer import KoGPT2Chat
 import torch
+import argparse
 
-model = GPT2LMHeadModel.from_pretrained('./finetuned_model')
+model = GPT2LMHeadModel.from_pretrained('./finetuned_model_test')
 
 U_TKN = '<usr>'
 S_TKN = '<sys>'
@@ -22,7 +24,6 @@ parser.add_argument('--chat',
                     help='response generation on given user input')
 
 args = parser.parse_args()
-
 
 def chat():
     with torch.no_grad():
@@ -50,9 +51,11 @@ def chat():
                 user = U_TKN + ''.join(qs[-2:]) + SENT + a_new # 직전 history 가지고 와서 sentiment 고려해주기
                 encoded = tokenizer.encode(user)
                 input_ids = torch.LongTensor(encoded).unsqueeze(dim=0)
-                output = model.generate(input_ids,max_length=50,
+                output = model.generate(input_ids,max_length=50,min_length=10,
                                          num_beams=10, do_sample=False, 
                                          top_k=50, no_repeat_ngram_size=2,
+                                         repetition_penalty=0.5,
+                                         top_p=0.9,
                                         temperature=0.85)
                 a_new = tokenizer.decode(output[0], skip_special_tokens=True)
                 idx = torch.where(output[0]==tokenizer.encode('<sys>')[0])

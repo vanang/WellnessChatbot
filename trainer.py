@@ -26,6 +26,11 @@ parser.add_argument('--train',
                     default=False,
                     help='for training')
 
+parser.add_argument('--chat',
+                    action='store_true',
+                    default=False,
+                    help='response generation on given user input')
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -36,7 +41,7 @@ MASK = '<unused0>'
 PAD = '<pad>'
 SENT = '<unused1>'
 
-TOKENIZER = PreTrainedTokenizerFast.from_pretrained("skt/kogpt2-base-v2",
+tokenizer = PreTrainedTokenizerFast.from_pretrained("skt/kogpt2-base-v2",
             eos_token=EOS, unk_token='<unk>',
             pad_token=PAD, mask_token=MASK) 
 
@@ -52,7 +57,7 @@ class CharDataset(Dataset):
         self.pad = PAD
         self.sent_token = SENT
         self.max_len = max_len
-        self.tokenizer = TOKENIZER 
+        self.tokenizer = tokenizer 
 
     def __len__(self):
         return len(self._data)
@@ -118,7 +123,7 @@ class KoGPT2Chat(LightningModule):
 
         parser.add_argument('--batch-size',
                             type=int,
-                            default=96,
+                            default=36,
                             help='batch size for training (default: 96)')
         parser.add_argument('--lr',
                             type=float,
@@ -179,7 +184,27 @@ class KoGPT2Chat(LightningModule):
             self.train_set, batch_size=self.hparams.batch_size, num_workers=4,
             shuffle=True, collate_fn=self._collate_fn)
         return train_dataloader
-
+    
+    def chat(self, sent='0'):
+        tok = tokenizer 
+        sent_tokens = tok.tokenize(sent)
+        with torch.no_grad():
+            while 1:
+                q = input('user > ').strip()
+                if q == 'quit':
+                    break
+                a = ''
+                while 1:
+                    input_ids = torch.LongTensor(tok.encode(U_TKN + q + SENT + sent + S_TKN + a)).unsqueeze(dim=0)
+                    pred = self(input_ids)
+                    gen = tok.convert_ids_to_tokens(
+                        torch.argmax(
+                            pred,
+                            dim=-1).squeeze().numpy().tolist())[-1]
+                    if gen == EOS:
+                        break
+                    a += gen.replace('▁', ' ')
+                print("Simsimi > {}".format(a.strip()))
 
 parser = KoGPT2Chat.add_model_specific_args(parser)
 parser = Trainer.add_argparse_args(parser)
@@ -204,10 +229,15 @@ if __name__ == "__main__":
             args, accelerator="dp", # only for multi gpus
             checkpoint_callback=checkpoint_callback, gradient_clip_val=1.0)
         trainer.fit(model)
-#        model.kogpt2.save_pretrained('./finetuned_model/')
+        logging.info(f'Save pretrained transformer mdoel to ./finedtune_model_test')
+        model.kogpt2.save_pretrained('./finetuned_model_test/')
         
         logging.info('best model path {}'.format(checkpoint_callback.best_model_path))
-        trained_model=model.kogpt2.load_from_checkpoint(checkpoint_callback.best_model_path)
-        trained_model.save_pretrained('./finetuned_model/')
+        # trained_model=model.kogpt2.load_from_checkpoint(checkpoint_callback.best_model_path)
+        # trained_model.save_pretrained('./finetuned_model_test/')
+
+        # trained_model.save_pretrained('./finetuned_model/')
         
- 
+    if args.chat:
+        model = KoGPT2Chat.load_from_checkpoint(args.model_params)
+        model.chat()
